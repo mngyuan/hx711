@@ -5,19 +5,22 @@
 
 
 #include <stdio.h>
-#include "gb_common.h"
 #include <sched.h>
 #include <string.h>
 #include <stdlib.h>
+#include <Gpio.h>
+#include <unistd.h>
 
 #define CLOCK_PIN	31
 #define DATA_PIN	30
 #define N_SAMPLES	64
 #define SPREAD		10
 
-#define SCK_ON  (GPIO_SET0 = (1 << CLOCK_PIN))
-#define SCK_OFF (GPIO_CLR0 = (1 << CLOCK_PIN))
-#define DT_R    (GPIO_IN0  & (1 << DATA_PIN))
+#define SCK_ON  (clockGpio.set())
+#define SCK_OFF (clockGpio.clear())
+#define DT_R    (dataGpio.read())
+Gpio clockGpio;
+Gpio dataGpio;
 
 void           reset_converter(void);
 unsigned long  read_cnt(long offset, int argc);
@@ -39,47 +42,19 @@ void setHighPri (void)
 
 void setup_gpio()
 {
-  INP_GPIO(DATA_PIN);
-  INP_GPIO(CLOCK_PIN);  OUT_GPIO(CLOCK_PIN);
+  clockGpio.open(CLOCK_PIN, Gpio::OUTPUT);
+  dataGpio.open(DATA_PIN, Gpio::INPUT);
   SCK_OFF;
-
-//   GPIO_PULL = 0;
-//   short_wait();
-//   GPIO_PULLCLK0 = 1 << DATA_PIN;
- //  short_wait();
-//   GPIO_PULL = 0;
-//   GPIO_PULLCLK0 = 0;
-
-/*   GPIO_PULL = 2;
-   short_wait();
-   GPIO_PULLCLK0 = 1 << DATA_PIN;
-   short_wait();
-   GPIO_PULL = 0;
-   GPIO_PULLCLK0 = 0;*/
 }
-
-void 	unpull_pins()
-{
-   GPIO_PULL = 0;
-//   short_wait();
-   GPIO_PULLCLK0 = 1 << DATA_PIN;
-//   short_wait();
-   GPIO_PULL = 0;
-   GPIO_PULLCLK0 = 0;
-} // unpull_pins
-
-
 
 int main(int argc, char **argv)
 {
   int i, j;
-  long tmp=0;
   long tmp_avg=0;
   long tmp_avg2;
   long offset=0;
   float filter_low, filter_high;
   float spread_percent = SPREAD / 100.0 /2.0;
-  int b;
   int nsamples=N_SAMPLES;
   long samples[nsamples];
 
@@ -88,7 +63,6 @@ int main(int argc, char **argv)
   }
 
   setHighPri();
-  setup_io();
   setup_gpio();
   reset_converter();
 
@@ -121,14 +95,12 @@ int main(int argc, char **argv)
 
   if (j == 0) {
     printf("No data to consider\n");
-    exit(255);
+    return(255);
 
   }
-  printf("%d\n", (tmp_avg2 / j) - offset);
-
+  printf("%ld\n", (tmp_avg2 / j) - offset);
+  return 0;
 //  printf("average within %f percent: %d from %d samples, original: %d\n", spread_percent*100, (tmp_avg2 / j) - offset, j, tmp_avg - offset);
-  unpull_pins();
-  restore_io();
 }
 
 
@@ -157,8 +129,7 @@ void set_gain(int r) {
 
 unsigned long read_cnt(long offset, int argc) {
 	long count;
-	int i;
-	int b;
+	int b = 0;
 
 
   count = 0;
@@ -170,7 +141,7 @@ unsigned long read_cnt(long offset, int argc) {
 	b++;
 	b++;
 
-  for(i=0;i<24	; i++) {
+  for(unsigned int i = 0; i < 24; i++) {
 	SCK_ON;
         count = count << 1;
 	b++;
@@ -208,11 +179,11 @@ unsigned long read_cnt(long offset, int argc) {
 
 
 if (argc < 2 ) {
-  for (i=31;i>=0;i--) {
+  for (int i=31; i>=0; i--) {
    printf("%d ", ((count-offset) & ( 1 << i )) != 0 );
   }
 
-  printf("n: %10d     -  ", count - offset);
+  printf("n: %10ld     -  ", count - offset);
   printf("\n"); 
 }
 
