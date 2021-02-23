@@ -1,18 +1,15 @@
-/* 
- gurov was here, use this code, or don't, whatever, I don't care. If you see a giant bug with a billion legs, please let me know so it can be squashed
-
-*/
-
 #include <stdio.h>
 #include <sched.h>
 #include <string.h>
 #include <stdlib.h>
 #include <Gpio.h>
 #include <unistd.h>
+#include <vector>
+#include <numeric>
 
-#define CLOCK_PIN 31
-#define DATA_PIN 30
-#define N_SAMPLES 64
+#define CLOCK_PIN 59
+#define DATA_PIN 50
+#define SAMPLE_MEMORY 64
 #define SPREAD 10
 
 #define SCK_ON (clockGpio.set())
@@ -43,58 +40,40 @@ void setup_gpio() {
 }
 
 int main(int argc, char ** argv) {
-  int i, j;
-  long tmp_avg = 0;
-  long tmp_avg2;
-  long offset = 0;
-  float filter_low, filter_high;
   float spread_percent = SPREAD / 100.0 / 2.0;
-  int nsamples = N_SAMPLES;
-  long samples[nsamples];
-
-  if (argc == 2) {
-    offset = atol(argv[1]);
-  }
+  std::vector<long> samples;
 
   setHighPri();
   setup_gpio();
   reset_converter();
 
-  j = 0;
-
-  // get the dirty samples and average them
-  for (i = 0; i < nsamples; i++) {
-    reset_converter();
-    samples[i] = read_cnt(0, argc);
-    tmp_avg += samples[i];
-  }
-
-  tmp_avg = tmp_avg / nsamples;
-
-  tmp_avg2 = 0;
-  j = 0;
-
-  filter_low = (float) tmp_avg * (1.0 - spread_percent);
-  filter_high = (float) tmp_avg * (1.0 + spread_percent);
-
-  //  printf("%d %d\n", (int) filter_low, (int) filter_high);
-
-  for (i = 0; i < nsamples; i++) {
-    if ((samples[i] < filter_high && samples[i] > filter_low) ||
-      (samples[i] > filter_high && samples[i] < filter_low)) {
-      tmp_avg2 += samples[i];
-      j++;
+  while(true) {
+    long currentReading = read_cnt(0, argc);
+    samples.push_back(currentReading);
+    if (samples.size() > SAMPLE_MEMORY) {
+      samples.erase(samples.begin());
     }
-  }
 
-  if (j == 0) {
-    printf("No data to consider\n");
-    return (255);
-
+    long average = accumulate(samples.begin(), samples.end(), 0.0) / samples.size();
+    float filter_low = (float) average * (1.0 - spread_percent);
+    float filter_high = (float) average * (1.0 + spread_percent);
+    int cleanSamples = 0;
+    long cleanSum = 0;
+    for (auto s: samples) {
+    	if (s > filter_low && s < filter_high) {
+    	  cleanSum += s;
+    	  cleanSamples++;
+    	}
+    }
+    if (cleanSamples == 0) {
+    	// we jumped a lot?
+    	cleanSamples = 1;
+    }
+    
+    printf("Reading: %ld\tSmooth avg: %ld\tSamples: %d\n", currentReading, cleanSum / cleanSamples, cleanSamples);
   }
-  printf("%ld\n", (tmp_avg2 / j) - offset);
+  
   return 0;
-  //  printf("average within %f percent: %d from %d samples, original: %d\n", spread_percent*100, (tmp_avg2 / j) - offset, j, tmp_avg - offset);
 }
 
 void reset_converter(void) {
